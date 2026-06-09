@@ -1,6 +1,6 @@
 ---
 name: ht-skills
-description: 管理灏天文库文集和文档，支持新建文集、新建文档、查询文集/文档、更新文档、修改文档归属、管理文档层级、查询个人花园限制与用量；支持图片上传到 COS、图片分组、查询图片列表/详情与图片额度。适用于 OpenClaw 自主写文章并上传、文集创建、文档入库、文档移动、插图上传与外链等场景。
+description: 管理灏天文库文集和文档，支持新建文集、新建文档、查询文集/文档、更新文档、修改文档归属、管理文档层级、查询个人花园限制与用量；支持文档片段 RAG 检索、图片上传到 COS、图片分组、查询图片列表/详情与图片额度。适用于 OpenClaw 自主写文章并上传、文集创建、文档入库、知识检索、文档移动、插图上传与外链等场景。
 allowed-tools: [bash]
 environment-variables:
   - HT_SKILL_SERVER_URL
@@ -24,6 +24,7 @@ config-files:
 - **修改文档归属**：需有目标文集权限；文档属于多个文集时需指定 `--from-collection-id`。
 - **图片上传**：需本地可读图片路径；大文件上传耗时较长。上传成功后响应中的 `file_url` 可直接用于正文插图。
 - **图片分组**：使用 `--group-id` 前可用 `list_image_groups.py` 查询分组 ID；分组必须属于当前用户。
+- **RAG 文档片段检索**：`--collection-ids` 须为**灏天文库公开精品文集 ID**（见下方公开目录链接）；**不要**用 `list_collections.py` 查个人花园文集 ID 来做 RAG 检索。
 
 ---
 
@@ -57,6 +58,21 @@ config-files:
 2. **检查额度**（可选）：`get_image_limits_usage.py` 确认 `can_upload`。
 3. **上传**：`upload_image.py --file "路径" [--remark "说明"] [--group-id N]`。
 4. **使用链接**：从返回 JSON 的 `data.file_url`（或 `data.file_path` 自行拼域名）插入文档 Markdown/HTML；勿猜测 URL。
+
+### 规范六：文档片段检索（RAG）
+
+1. **明确检索问题**：用户给出要问的内容或关键词，作为 `--content`。
+2. **确定目标文集 ID**（必填，最多 5 个）：
+   - **公开精品文集 ID** 从灏天文库官方目录获取（含 ID 与名称对照表）：
+     - [灏天文库文集完整目录公开](https://aiknowledge.cn/article/66521-%E7%81%8F%E5%A4%A9%E6%96%87%E5%BA%93%E6%96%87%E9%9B%86%E5%AE%8C%E6%95%B4%E7%9B%AE%E5%BD%95%E5%85%AC%E5%BC%80)
+   - 在目录中按分类或搜索找到与用户问题相关的**文集名称**，取表格 **ID** 列的数字（如 `189` 对应「AI 大模型」）。
+   - **勿用** `list_collections.py`：该接口只返回当前用户**个人花园**文集，与 RAG 索引的公开精品文集不是同一套数据。
+   - 若用户只说了领域/主题（如「人工智能」）而未指定具体文集，应先在公开目录中挑选 1～5 个最相关的文集 ID，必要时向用户确认。
+3. **执行检索**：
+   ```bash
+   python scripts/retrieve_documents.py --content "用户的问题" --collection-ids 189 907
+   ```
+4. **使用返回结果**：响应中的 `sources` 为相关片段及出处（文集名、文档名、`source` 字段等）；本接口**不调用大模型**，由智能体根据片段自行组织回答或引用。若响应含 `warning`，说明传入文集超过 5 个，已自动截断。
 
 ---
 
@@ -168,3 +184,40 @@ python scripts/get_image.py --id <图片ID>
 
 - 上传成功后的 `data.file_url` 为可访问地址（依赖服务端 `cos.public_base_url` 或 `cos.domain` 配置）
 - `list_images.py` 的 `--name` 对应服务端查询参数 `file_name`（文件名模糊匹配）
+
+## 功能十三：文档片段检索（RAG）
+
+从灏天文库 RAG 向量索引中检索与问题相关的文档片段及出处，**不调用大模型**。
+
+### 文集 ID 从哪里获取？
+
+RAG 检索针对的是平台**公开精品文集**（已入库向量索引），ID 与名称对照见官方目录：
+
+**[灏天文库文集完整目录公开](https://aiknowledge.cn/article/66521-%E7%81%8F%E5%A4%A9%E6%96%87%E5%BA%93%E6%96%87%E9%9B%86%E5%AE%8C%E6%95%B4%E7%9B%AE%E5%BD%95%E5%85%AC%E5%BC%80)**
+
+目录按领域分类（如「人工智能与大模型」「编程语言与开发框架」等），每行格式为 **ID | 文集名称**。执行检索时，将表格中的 **ID 数字** 作为 `--collection-ids` 传入即可（如 ID `189` 可写 `189` 或 `collection_189`）。
+
+> **注意**：`list_collections.py` 只能查到当前用户自己的**个人花园**文集，不能替代上述公开目录；做 RAG 检索时请以上述链接为准。
+
+### 命令示例
+
+```bash
+# 在公开目录中查到「AI 大模型」ID 为 189、「人工智能基础」ID 为 907 后：
+python scripts/retrieve_documents.py --content "什么是 Transformer？" --collection-ids 189 907
+
+# ID 也可带 collection_ 前缀
+python scripts/retrieve_documents.py --content "检索内容" --collection-ids collection_189
+```
+
+### 参数说明
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--content` | 是 | 检索内容/用户问题 |
+| `--collection-ids` | 是 | 文集 ID 列表，从[公开目录](https://aiknowledge.cn/article/66521-%E7%81%8F%E5%A4%A9%E6%96%87%E5%BA%93%E6%96%87%E9%9B%86%E5%AE%8C%E6%95%B4%E7%9B%AE%E5%BD%95%E5%85%AC%E5%BC%80)获取；支持 `21` 或 `collection_21`；**最多 5 个**，超出仅使用前 5 个并返回 `warning` |
+
+### 返回结果怎么用
+
+- `sources`：命中的文档片段列表，含 `content`（片段）、`document_name`、`collection_name`、`source`（出处描述）、`distance`（相似度）等
+- `collection_info`：实际检索的文集、未建索引文集等汇总信息
+- 智能体应基于 `sources` 组织回答，并注明引用出处；勿编造目录中不存在的文集 ID
