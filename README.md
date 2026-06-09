@@ -60,6 +60,7 @@ export HT_SKILL_TOKEN="你的个人Token"
 | `upload_image.py` | POST | `/api/images/upload` | 上传图片（multipart） |
 | `list_images.py` | GET | `/api/images` | 查询当前用户图片列表 |
 | `get_image.py` | GET | `/api/images/{id}` | 查询图片详情 |
+| `retrieve_documents.py` | POST | `/api/rag/retrieve` | 文档片段检索（RAG，不调用大模型） |
 
 ---
 
@@ -210,6 +211,19 @@ python scripts/get_garden_limits_usage.py
 
 ---
 
+### retrieve_documents.py — 文档片段检索（RAG）
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `--content` | string | 是 | 检索内容 |
+| `--collection-ids` | string[] | 是 | 文集 ID 列表，从[灏天文库文集完整目录公开](https://aiknowledge.cn/article/66521-%E7%81%8F%E5%A4%A9%E6%96%87%E5%BA%93%E6%96%87%E9%9B%86%E5%AE%8C%E6%95%B4%E7%9B%AE%E5%BD%95%E5%85%AC%E5%BC%80)获取；支持 `21` 或 `collection_21`；最多 5 个 |
+
+**请求体**：`{"content": "...", "collection_ids": ["189"]}`
+
+**文集 ID 来源**：公开目录按分类列出 ID 与文集名称；勿用 `list_collections.py`（仅个人花园）。返回片段数量由服务端默认（10）；所有登录用户均可检索。超出 5 个文集时响应中会带 `warning` 字段。
+
+---
+
 ### create_image_group.py — 创建图片分组
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -299,6 +313,9 @@ python scripts/move_document.py --id 10 --collection-id 2 --from-collection-id 1
 
 # 查询当前用户个人花园限制与用量
 python scripts/get_garden_limits_usage.py
+
+# 文档片段检索（RAG，不调用大模型）
+python scripts/retrieve_documents.py --content "什么是人工智能？" --collection-ids 21 22
 
 # 图片：分组、额度、上传、列表、详情
 python scripts/create_image_group.py --name "插图"
