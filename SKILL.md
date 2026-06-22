@@ -17,7 +17,8 @@ config-files:
 
 ## 客户端注意事项（必须遵守）
 
-- **查询文集列表**：无 `--limit`、`--offset`。
+- **个人花园范围**：`list_collections` / `get_collection` / 新建与修改文档等读写操作**仅针对个人花园**（`source_type=garden`）；用户在灏天文库网页上的精品文集等非花园文集不会出现在列表中，也无法通过 ht-skills 操作。
+- **查询文集列表**：无 `--limit`、`--offset`；仅返回当前用户的**个人花园**文集。
 - **查询文档列表**：必须带 `--collection-id`（文集 ID）；若没有文集 ID，需先 `list_collections.py --name "文集名称"` 查询，或**向用户询问目标文集名称**。
 - **查询文档列表**：无 `--limit`、`--offset`。
 - **更新文档**：`author` 字段不可更新，只能更新 name、content、sort、parent。
@@ -73,6 +74,21 @@ config-files:
    python scripts/retrieve_documents.py --content "用户的问题" --collection-ids 189 907
    ```
 4. **使用返回结果**：响应中的 `sources` 为相关片段及出处（文集名、文档名、`source` 字段等）；本接口**不调用大模型**，由智能体根据片段自行组织回答或引用。若响应含 `warning`，说明传入文集超过 5 个，已自动截断。
+
+### 规范七：个人花园配额与会员（写操作前建议执行）
+
+1. **写操作前先查配额**：新建文集、新建文档、移动文档、更新较长正文前，先执行 `get_garden_limits_usage.py`，确认 `usage.can_create_collection`、目标文集的 `documents_quota` 及 `limits.max_chars_per_document`。
+2. **解读会员状态**：响应 `data.membership.is_member` 为 `true` 表示当前为会员（`member_status=1`）；实际配额上限仍以 `data.limits` 为准（由灏天文库计算，含等级 tier 与会员倍数）。
+3. **会员失效提示**：若 `is_member` 为 `false` 且某文集 `documents_quota.used` 已超过当前 `limit`，应告知用户「存量保留，但不能再新建/扩容」；更新超长正文可能因字数上限被 403 拒绝。
+4. **配额不足时**：不要强行重试写接口；向用户说明当前 `已用/上限`（如 `collections_quota.text`、`documents_quota.text`），建议删减内容、更换文集或续费会员后再操作。
+
+### 规范八：申请花园文集晋升精品文集
+
+1. **与个人花园维护不同**：晋升是把**已有**个人花园文集申请变为平台精品文集；记录写入 `sys_collection_upload`，由管理员在灏天文库「文集审核管理」审核。
+2. **提交前先查额度**：`check_garden_promotion_quota.py`，确认 `can_submit` 为 true（每用户 24 小时最多 1 次）。
+3. **确认文集 ID**：`list_collections.py` 或 `get_collection.py`；文集内应已有文档。
+4. **提交**：`request_garden_promotion.py --collection-id <ID> [--reason "说明"]`。
+5. **跟踪**：`list_my_garden_promotion_requests.py`（status：0 待审、1 通过、2 驳回）。
 
 ---
 
@@ -162,8 +178,9 @@ python scripts/set_document_parent.py --collection-id 123 --document-id 456 --pa
 python scripts/get_garden_limits_usage.py
 ```
 
-- 无参数，返回当前用户的花园限制与占用情况
+- 无参数，返回当前用户**个人花园**的限制与占用情况（仅统计 `source_type=garden` 文集）
 - 占用字段使用更直观的 `已用/上限` 结构（如 `3/10`、`18/100`）
+- 响应含 `data.membership`（`is_member`、`member_status`），便于向用户解释会员与配额；实际上限以 `data.limits` 为准
 
 ## 功能十一：图片分组
 
@@ -221,3 +238,15 @@ python scripts/retrieve_documents.py --content "检索内容" --collection-ids c
 - `sources`：命中的文档片段列表，含 `content`（片段）、`document_name`、`collection_name`、`source`（出处描述）、`distance`（相似度）等
 - `collection_info`：实际检索的文集、未建索引文集等汇总信息
 - 智能体应基于 `sources` 组织回答，并注明引用出处；勿编造目录中不存在的文集 ID
+
+## 功能十四：花园文集晋升申请
+
+```bash
+python scripts/check_garden_promotion_quota.py
+python scripts/request_garden_promotion.py --collection-id <文集ID> [--reason "申请说明"]
+python scripts/list_my_garden_promotion_requests.py [--limit 50] [--offset 0]
+```
+
+- 仅针对当前用户的**个人花园**文集（`source_type=garden`）
+- 每用户 **24 小时最多 1 次**晋升申请
+- 审核在灏天文库后台「文集审核管理」进行，通过后文集变为精品文集（`source_type=collection`）

@@ -206,7 +206,8 @@ python scripts/get_garden_limits_usage.py
 ```
 
 返回内容包含：
-- 个人花园限制：是否管理员、文集上限、每文集文档上限、单文档字数上限
+- 个人花园限制：文集上限、每文集文档上限、单文档字数上限（仅统计 `source_type=garden` 文集）
+- 会员状态：`membership.is_member`、`membership.member_status`（1=会员，2=非会员）；实际上限仍以 `limits` 为准
 - 当前用量：当前文集数、总文档数、每个文集的文档占用情况、是否还能新建文集
 
 ---
